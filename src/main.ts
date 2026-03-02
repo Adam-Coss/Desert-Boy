@@ -1,7 +1,13 @@
 import './style.css';
+import type { LearningLanguage } from './learn/languages';
 import { showFatalError } from './ui/fatalErrorOverlay';
 
 const RUNNING_KEY = 'desert-boy:running';
+
+function requireEl<T extends Element>(el: T | null, name: string): T {
+  if (!el) throw new Error(`${name} not found`);
+  return el;
+}
 
 function setupGlobalFatalHandlers(): void {
   window.onerror = (message, source, lineno, colno, error) => {
@@ -72,13 +78,13 @@ async function bootstrap(): Promise<void> {
 
   app.replaceChildren(screen);
 
-  const logToggle = screen.querySelector<HTMLButtonElement>('.log-toggle');
-  const gameContainer = screen.querySelector<HTMLDivElement>('#game');
-  const languageLabel = screen.querySelector<HTMLDivElement>('.learning-language');
-  const changeLanguageButton = screen.querySelector<HTMLButtonElement>('.change-language');
-  if (!logToggle || !gameContainer || !languageLabel || !changeLanguageButton) {
-    throw new Error('Required controls not found');
-  }
+  const logToggle = requireEl(screen.querySelector<HTMLButtonElement>('.log-toggle'), 'logToggle');
+  const gameContainer = requireEl(screen.querySelector<HTMLDivElement>('#game'), 'gameContainer');
+  const languageLabel = requireEl(screen.querySelector<HTMLDivElement>('.learning-language'), 'languageLabel');
+  const changeLanguageButton = requireEl(
+    screen.querySelector<HTMLButtonElement>('.change-language'),
+    'changeLanguageButton'
+  );
 
   const overlay = document.createElement('div');
   overlay.className = 'log-overlay';
@@ -98,14 +104,16 @@ async function bootstrap(): Promise<void> {
 
   app.append(overlay);
 
-  const logList = overlay.querySelector<HTMLUListElement>('.log-list');
-  const copyButton = overlay.querySelector<HTMLButtonElement>('[data-action="copy"]');
-  const clearButton = overlay.querySelector<HTMLButtonElement>('[data-action="clear"]');
-  const closeButton = overlay.querySelector<HTMLButtonElement>('[data-action="close"]');
-
-  if (!logList || !copyButton || !clearButton || !closeButton) {
-    throw new Error('Log controls missing');
-  }
+  const logList = requireEl(overlay.querySelector<HTMLUListElement>('.log-list'), 'logList');
+  const copyButton = requireEl(overlay.querySelector<HTMLButtonElement>('[data-action="copy"]'), 'copyButton');
+  const clearButton = requireEl(
+    overlay.querySelector<HTMLButtonElement>('[data-action="clear"]'),
+    'clearButton'
+  );
+  const closeButton = requireEl(
+    overlay.querySelector<HTMLButtonElement>('[data-action="close"]'),
+    'closeButton'
+  );
 
   function renderLogs(): void {
     logList.innerHTML = '';
@@ -160,12 +168,12 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  function updateHudLanguage(language: { label: string; bcp47: string }): void {
+  function updateHudLanguage(language: LearningLanguage): void {
     languageLabel.innerHTML = `<strong>Язык:</strong> ${language.label} (${language.bcp47})`;
   }
 
   const languagePicker = createLanguagePicker(app, {
-    onSelect: (language: { label: string; bcp47: string }) => {
+    onSelect: (language) => {
       setLearningLanguage(language);
       updateHudLanguage(language);
       languagePicker.close();
