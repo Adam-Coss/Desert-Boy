@@ -43,13 +43,14 @@ async function bootstrap(): Promise<void> {
   renderBootScreen(app);
   setupGlobalFatalHandlers();
 
-  const [{ bindKeyboardInput, createGame }, { InputState }, { clearLogs, getLogs, registerLogRenderer, writeLog }, { getLearningLanguage, setLearningLanguage }, { createJoystick }, { createLanguagePicker }] = await Promise.all([
+  const [{ bindKeyboardInput, createGame }, { InputState }, { clearLogs, getLogs, registerLogRenderer, writeLog }, { getLearningLanguage, setLearningLanguage }, { createJoystick }, { createLanguagePicker }, { ensureSpeechRecognitionReady }] = await Promise.all([
     import('./game/createGame'),
     import('./game/input/inputState'),
     import('./logging'),
     import('./state/settings'),
     import('./ui/joystick'),
-    import('./ui/languagePicker')
+    import('./ui/languagePicker'),
+    import('./ui/sttGate')
   ]);
 
   window.__DESERT_BOY_WRITE_LOG__ = writeLog;
@@ -66,7 +67,7 @@ async function bootstrap(): Promise<void> {
         <div><strong>Нужно сказать:</strong> …</div>
         <button type="button" class="change-language">Сменить язык</button>
       </div>
-      <div><strong>Вы сказали:</strong> …</div>
+      <div class="hud-spoken"><strong>Вы сказали:</strong> …</div>
       <div class="learning-language"><strong>Язык:</strong> Не выбран</div>
     </header>
     <main>
@@ -85,6 +86,12 @@ async function bootstrap(): Promise<void> {
     screen.querySelector<HTMLButtonElement>('.change-language'),
     'changeLanguageButton'
   );
+
+  const spokenLabel = requireEl(screen.querySelector<HTMLDivElement>('.hud-spoken'), 'spokenLabel');
+
+  function updateHudSpoken(text: string): void {
+    spokenLabel.innerHTML = `<strong>Вы сказали:</strong> ${text || '…'}`;
+  }
 
   const overlay = document.createElement('div');
   overlay.className = 'log-overlay';
@@ -168,17 +175,25 @@ async function bootstrap(): Promise<void> {
     }
   }
 
+  async function runSpeechGateForCurrentLanguage(): Promise<void> {
+    await ensureSpeechRecognitionReady(() => {
+      const current = getLearningLanguage();
+      return current?.bcp47 ?? 'en-US';
+    }, updateHudSpoken);
+  }
+
   function updateHudLanguage(language: LearningLanguage): void {
     languageLabel.innerHTML = `<strong>Язык:</strong> ${language.label} (${language.bcp47})`;
   }
 
   const languagePicker = createLanguagePicker(app, {
-    onSelect: (language) => {
+    onSelect: async (language) => {
       setLearningLanguage(language);
       updateHudLanguage(language);
       languagePicker.close();
-      ensureGameStarted();
       writeLog('INFO', `Learning language set: ${language.bcp47}`);
+      await runSpeechGateForCurrentLanguage();
+      ensureGameStarted();
     }
   });
 
@@ -190,6 +205,7 @@ async function bootstrap(): Promise<void> {
   const savedLanguage = getLearningLanguage();
   if (savedLanguage) {
     updateHudLanguage(savedLanguage);
+    await runSpeechGateForCurrentLanguage();
     ensureGameStarted();
   } else {
     languagePicker.open();
