@@ -1,4 +1,5 @@
 import { getDemoPhrase } from '../learn/demoPhrases';
+import { getShopFlow } from '../learn/shopPhrases';
 
 export type Task = {
   id: string;
@@ -21,4 +22,34 @@ export function getInitialTasks(langBcp47: string): Task[] {
       createdAt: Date.now()
     }
   ];
+}
+
+export function ensureShopTasks(langBcp47: string, currentTasks: Task[]): Task[] {
+  const shopFlow = getShopFlow(langBcp47);
+  const buyStep = shopFlow.steps.find((step) => step.id === 'shop.do_you_have_cat_food');
+  const noThanksStep = shopFlow.steps.find((step) => step.id === 'shop.no_thanks');
+
+  const nextTasks = [...currentTasks];
+
+  if (!nextTasks.some((task) => task.id === 'shop.buy_cat_food')) {
+    nextTasks.push({
+      id: 'shop.buy_cat_food',
+      title: 'Купить корм для кошки',
+      expected: buyStep?.expected,
+      done: false,
+      createdAt: Date.now()
+    });
+  }
+
+  if (!nextTasks.some((task) => task.id === 'shop.say_no_thanks')) {
+    nextTasks.push({
+      id: 'shop.say_no_thanks',
+      title: 'Сказать «нет, спасибо» в магазине',
+      expected: noThanksStep?.expected,
+      done: false,
+      createdAt: Date.now()
+    });
+  }
+
+  return nextTasks;
 }

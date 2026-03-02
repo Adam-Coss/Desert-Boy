@@ -1,6 +1,7 @@
 import './style.css';
 import type { LearningLanguage } from './learn/languages';
 import type { Task } from './quests/tasks';
+import type { Inventory } from './state/inventory';
 import { showFatalError } from './ui/fatalErrorOverlay';
 import { mountHud } from './ui/hud';
 
@@ -51,7 +52,8 @@ async function bootstrap(): Promise<void> {
     { clearLogs, getLogs, registerLogRenderer, writeLog },
     { getLearningLanguage, setLearningLanguage },
     { loadTasks, saveTasks },
-    { getInitialTasks },
+    { loadInventory, saveInventory },
+    { ensureShopTasks, getInitialTasks },
     { createJoystick },
     { createLanguagePicker },
     { createJournal },
@@ -62,6 +64,7 @@ async function bootstrap(): Promise<void> {
     import('./logging'),
     import('./state/settings'),
     import('./state/progress'),
+    import('./state/inventory'),
     import('./quests/tasks'),
     import('./ui/joystick'),
     import('./ui/languagePicker'),
@@ -88,6 +91,7 @@ async function bootstrap(): Promise<void> {
       </div>
       <div class="hud-recognized"><strong>Вы сказали:</strong> …</div>
       <div class="hud-result"><strong>Статус:</strong> …</div>
+      <div class="hud-inventory"><strong>Cat food:</strong> 0</div>
       <div class="learning-language"><strong>Язык:</strong> Не выбран</div>
     </header>
     <main>
@@ -188,6 +192,7 @@ async function bootstrap(): Promise<void> {
   const joystick = createJoystick(screen, inputState);
 
   let tasks: Task[] = [];
+  let inventory: Inventory = loadInventory();
   let game: ReturnType<typeof createGame> | undefined;
   let journal: ReturnType<typeof createJournal> | undefined;
 
@@ -215,10 +220,60 @@ async function bootstrap(): Promise<void> {
     }
   };
 
+  const completeShopFlow = (): void => {
+    let changed = false;
+    tasks = tasks.map((task) => {
+      if ((task.id === 'shop.buy_cat_food' || task.id === 'shop.say_no_thanks') && !task.done) {
+        changed = true;
+        return { ...task, done: true };
+      }
+      return task;
+    });
+
+    inventory = { ...inventory, catFood: inventory.catFood + 1 };
+
+    saveTasks(tasks);
+    saveInventory(inventory);
+    hud.setCatFood(inventory.catFood);
+    journal?.render();
+
+    if (changed) {
+      writeLog('INFO', 'Task completed: shop.buy_cat_food');
+      writeLog('INFO', 'Task completed: shop.say_no_thanks');
+    }
+    writeLog('INFO', 'Shop completed, catFood +1');
+  };
+
   function ensureGameStarted(): void {
     if (!game) {
-      game = createGame(gameContainer, inputState, markDemoTaskCompleted);
+      game = createGame(gameContainer, inputState, markDemoTaskCompleted, completeShopFlow);
     }
+  }
+
+  function ensureJournalInitialized(): void {
+    if (!journal) {
+      journal = createJournal(getCurrentLang, () => tasks, setTasksState);
+      openJournalButton.addEventListener('click', () => journal?.toggle());
+      window.addEventListener('keydown', (event) => {
+        if (event.code === 'KeyJ') {
+          journal?.toggle();
+        }
+      });
+    }
+
+    journal.render();
+  }
+
+  function ensureTasksForLanguage(languageCode: string): void {
+    const loaded = loadTasks();
+    tasks = loaded && loaded.length > 0 ? loaded : getInitialTasks(languageCode);
+    const next = ensureShopTasks(languageCode, tasks);
+
+    if (next.length !== tasks.length) {
+      tasks = next;
+    }
+
+    saveTasks(tasks);
   }
 
   function ensureJournalInitialized(): void {
@@ -265,10 +320,8 @@ async function bootstrap(): Promise<void> {
       writeLog('INFO', `Learning language set: ${language.bcp47}`);
       await runSpeechGateForCurrentLanguage();
       ensureGameStarted();
-      if (tasks.length === 0) {
-        tasks = getInitialTasks(language.bcp47);
-        saveTasks(tasks);
-      }
+
+      ensureTasksForLanguage(language.bcp47);
       ensureJournalInitialized();
     }
   });
@@ -288,6 +341,9 @@ async function bootstrap(): Promise<void> {
   } else {
     languagePicker.open();
   }
+
+  inventory = loadInventory();
+  hud.setCatFood(inventory.catFood);
 
   if (crashDetected) {
     writeLog('WARN', 'Detected unclean shutdown from previous session');

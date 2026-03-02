@@ -6,7 +6,8 @@ import { writeLog } from '../logging';
 export const createGame = (
   container: HTMLElement,
   inputState: InputState,
-  onDemoPhraseMatched: () => void
+  onDemoPhraseMatched: () => void,
+  onShopCompleted: () => void
 ): Phaser.Game => {
   const game = new Phaser.Game({
     type: Phaser.AUTO,
@@ -14,7 +15,7 @@ export const createGame = (
     width: container.clientWidth,
     height: container.clientHeight,
     backgroundColor: '#1e2436',
-    scene: [new WorldScene(inputState, onDemoPhraseMatched)],
+    scene: [new WorldScene(inputState, onDemoPhraseMatched, onShopCompleted)],
     physics: {
       default: 'arcade',
       arcade: {

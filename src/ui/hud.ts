@@ -9,6 +9,7 @@ export interface HudController {
   setExpected: (text: string) => void;
   setRecognized: (text: string) => void;
   setResult: (text: string) => void;
+  setCatFood: (count: number) => void;
 }
 
 let currentHud: HudController | null = null;
@@ -17,6 +18,7 @@ export function mountHud(root: ParentNode): HudController {
   const expectedLabel = requireElement(root.querySelector<HTMLDivElement>('.hud-expected'), 'expectedLabel');
   const recognizedLabel = requireElement(root.querySelector<HTMLDivElement>('.hud-recognized'), 'recognizedLabel');
   const resultLabel = requireElement(root.querySelector<HTMLDivElement>('.hud-result'), 'resultLabel');
+  const inventoryLabel = requireElement(root.querySelector<HTMLDivElement>('.hud-inventory'), 'inventoryLabel');
 
   const hud: HudController = {
     setExpected(text: string): void {
@@ -27,6 +29,9 @@ export function mountHud(root: ParentNode): HudController {
     },
     setResult(text: string): void {
       resultLabel.innerHTML = `<strong>Статус:</strong> ${text || '…'}`;
+    },
+    setCatFood(count: number): void {
+      inventoryLabel.innerHTML = `<strong>Cat food:</strong> ${count}`;
     }
   };
 
