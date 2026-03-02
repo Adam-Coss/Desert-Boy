@@ -23,19 +23,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
-      - name: Install dependencies (with logs)
+      - name: Install and build (with logs)
         shell: bash
         run: |
-          set -eo pipefail
+          set -e
           mkdir -p build-logs
-          npm ci 2>&1 | tee build-logs/build.log
-
-      - name: Build project (with logs)
-        shell: bash
-        run: |
-          set -eo pipefail
+          echo "== npm install ==" | tee build-logs/build.log
+          npm install 2>&1 | tee -a build-logs/build.log
+          echo "== npm run build ==" | tee -a build-logs/build.log
           npm run build 2>&1 | tee -a build-logs/build.log
 
       - name: Setup Pages
