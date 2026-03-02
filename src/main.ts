@@ -1,6 +1,7 @@
 import './style.css';
 import type { LearningLanguage } from './learn/languages';
 import { showFatalError } from './ui/fatalErrorOverlay';
+import { mountHud } from './ui/hud';
 
 const RUNNING_KEY = 'desert-boy:running';
 
@@ -64,10 +65,11 @@ async function bootstrap(): Promise<void> {
     ${crashDetected ? '<div class="crash-banner">Предыдущее завершение было некорректным</div>' : ''}
     <header id="hud" class="hud">
       <div class="hud-topline">
-        <div><strong>Нужно сказать:</strong> …</div>
+        <div class="hud-expected"><strong>Нужно сказать:</strong> …</div>
         <button type="button" class="change-language">Сменить язык</button>
       </div>
-      <div class="hud-spoken"><strong>Вы сказали:</strong> …</div>
+      <div class="hud-recognized"><strong>Вы сказали:</strong> …</div>
+      <div class="hud-result"><strong>Статус:</strong> …</div>
       <div class="learning-language"><strong>Язык:</strong> Не выбран</div>
     </header>
     <main>
@@ -87,11 +89,7 @@ async function bootstrap(): Promise<void> {
     'changeLanguageButton'
   );
 
-  const spokenLabel = requireEl(screen.querySelector<HTMLDivElement>('.hud-spoken'), 'spokenLabel');
-
-  function updateHudSpoken(text: string): void {
-    spokenLabel.innerHTML = `<strong>Вы сказали:</strong> ${text || '…'}`;
-  }
+  const hud = mountHud(screen);
 
   const overlay = document.createElement('div');
   overlay.className = 'log-overlay';
@@ -179,7 +177,7 @@ async function bootstrap(): Promise<void> {
     await ensureSpeechRecognitionReady(() => {
       const current = getLearningLanguage();
       return current?.bcp47 ?? 'en-US';
-    }, updateHudSpoken);
+    }, hud.setRecognized);
   }
 
   function updateHudLanguage(language: LearningLanguage): void {
