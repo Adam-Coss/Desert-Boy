@@ -1,7 +1,7 @@
 import { LEARNING_LANGUAGES, LearningLanguage } from '../learn/languages';
 
 export interface LanguagePickerOptions {
-  onSelect: (language: LearningLanguage) => void;
+  onSelect: (language: LearningLanguage) => void | Promise<void>;
 }
 
 export interface LanguagePicker {
