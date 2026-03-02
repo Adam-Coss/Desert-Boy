@@ -33,6 +33,21 @@ body {
   margin-bottom: 1rem;
 }
 
+.hud-topline {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.change-language {
+  white-space: nowrap;
+}
+
+.learning-language {
+  font-size: 0.95rem;
+}
+
 .title {
   font-size: clamp(2rem, 4vw, 3.5rem);
   text-align: center;
@@ -141,6 +156,43 @@ button {
   transform: translate(-50%, -50%);
   background: rgba(255, 255, 255, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.language-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.52);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.language-picker-panel {
+  width: min(760px, 96vw);
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid #d8c4a3;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.24);
+  padding: 1.2rem;
+}
+
+.language-picker-title {
+  margin: 0 0 1rem;
+  text-align: center;
+  font-size: clamp(1.3rem, 2.5vw, 1.8rem);
+}
+
+.language-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.7rem;
+}
+
+.language-picker-button {
+  min-height: 52px;
+  font-size: 1rem;
+  font-weight: 600;
 }
 
 @media (min-width: 960px) {

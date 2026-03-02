@@ -1,8 +1,11 @@
 import './style.css';
 import { bindKeyboardInput, createGame } from './game/createGame';
 import { InputState } from './game/input/inputState';
+import { LearningLanguage } from './learn/languages';
 import { clearLogs, getLogs, registerLogRenderer, writeLog } from './logging';
+import { getLearningLanguage, setLearningLanguage } from './state/settings';
 import { createJoystick } from './ui/joystick';
+import { createLanguagePicker } from './ui/languagePicker';
 
 const RUNNING_KEY = 'desert-boy:running';
 
@@ -20,8 +23,12 @@ screen.className = 'app';
 screen.innerHTML = `
   ${crashDetected ? '<div class="crash-banner">Предыдущее завершение было некорректным</div>' : ''}
   <header class="hud">
-    <div><strong>Нужно сказать:</strong> …</div>
+    <div class="hud-topline">
+      <div><strong>Нужно сказать:</strong> …</div>
+      <button type="button" class="change-language">Сменить язык</button>
+    </div>
     <div><strong>Вы сказали:</strong> …</div>
+    <div class="learning-language"><strong>Язык:</strong> Не выбран</div>
   </header>
   <main>
     <h1 class="title">Desert Boy</h1>
@@ -34,7 +41,9 @@ app.append(screen);
 
 const logToggle = screen.querySelector<HTMLButtonElement>('.log-toggle');
 const gameContainer = screen.querySelector<HTMLDivElement>('#game');
-if (!logToggle || !gameContainer) {
+const languageLabel = screen.querySelector<HTMLDivElement>('.learning-language');
+const changeLanguageButton = screen.querySelector<HTMLButtonElement>('.change-language');
+if (!logToggle || !gameContainer || !languageLabel || !changeLanguageButton) {
   throw new Error('Required controls not found');
 }
 
@@ -118,7 +127,41 @@ window.addEventListener('beforeunload', () => {
 const inputState = new InputState((source) => writeLog('INFO', `Input: ${source}`));
 const unbindKeyboard = bindKeyboardInput(inputState);
 const joystick = createJoystick(screen, inputState);
-const game = createGame(gameContainer, inputState);
+
+let game: ReturnType<typeof createGame> | undefined;
+
+function ensureGameStarted(): void {
+  if (!game) {
+    game = createGame(gameContainer, inputState);
+  }
+}
+
+function updateHudLanguage(language: LearningLanguage): void {
+  languageLabel.innerHTML = `<strong>Язык:</strong> ${language.label} (${language.bcp47})`;
+}
+
+const languagePicker = createLanguagePicker(app, {
+  onSelect: (language) => {
+    setLearningLanguage(language);
+    updateHudLanguage(language);
+    languagePicker.close();
+    ensureGameStarted();
+    writeLog('INFO', `Learning language set: ${language.bcp47}`);
+  }
+});
+
+changeLanguageButton.addEventListener('click', () => {
+  writeLog('INFO', 'Learning language change requested');
+  languagePicker.open();
+});
+
+const savedLanguage = getLearningLanguage();
+if (savedLanguage) {
+  updateHudLanguage(savedLanguage);
+  ensureGameStarted();
+} else {
+  languagePicker.open();
+}
 
 if (crashDetected) {
   writeLog('WARN', 'Detected unclean shutdown from previous session');
@@ -129,5 +172,5 @@ writeLog('INFO', 'Desert Boy app started');
 window.addEventListener('beforeunload', () => {
   unbindKeyboard();
   joystick.destroy();
-  game.destroy(true);
+  game?.destroy(true);
 });
