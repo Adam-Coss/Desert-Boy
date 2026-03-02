@@ -307,3 +307,80 @@ button {
   display: flex;
   gap: 0.5rem;
 }
+
+.talk-button {
+  position: fixed;
+  right: 1rem;
+  bottom: 4.5rem;
+  z-index: 24;
+}
+
+.hud-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.journal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.journal-panel {
+  width: min(760px, 94vw);
+  max-height: 76vh;
+  overflow: auto;
+  background: #fffdf7;
+  border: 1px solid #d8c4a3;
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+}
+
+.journal-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.journal-toolbar h2 {
+  margin: 0;
+}
+
+.journal-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.journal-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.journal-task {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem;
+  background: #fff3de;
+  border: 1px solid #e1c8a3;
+  border-radius: 8px;
+}
+
+.journal-task-title.done {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+
+.journal-task-speak {
+  min-width: 42px;
+}

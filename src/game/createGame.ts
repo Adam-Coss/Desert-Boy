@@ -3,14 +3,19 @@ import { InputState } from './input/inputState';
 import { WorldScene } from './scenes/WorldScene';
 import { writeLog } from '../logging';
 
-export const createGame = (container: HTMLElement, inputState: InputState): Phaser.Game => {
+export const createGame = (
+  container: HTMLElement,
+  inputState: InputState,
+  onDemoPhraseMatched: () => void,
+  onShopCompleted: () => void
+): Phaser.Game => {
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: container,
     width: container.clientWidth,
     height: container.clientHeight,
     backgroundColor: '#1e2436',
-    scene: [new WorldScene(inputState)],
+    scene: [new WorldScene(inputState, onDemoPhraseMatched, onShopCompleted)],
     physics: {
       default: 'arcade',
       arcade: {
