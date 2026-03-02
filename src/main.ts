@@ -1,45 +1,16 @@
 import './style.css';
+import { bindKeyboardInput, createGame } from './game/createGame';
+import { InputState } from './game/input/inputState';
+import { clearLogs, getLogs, registerLogRenderer, writeLog } from './logging';
+import { createJoystick } from './ui/joystick';
 
-const LOGS_KEY = 'desert-boy:logs';
 const RUNNING_KEY = 'desert-boy:running';
-const LOG_LIMIT = 500;
 
 const app = document.querySelector<HTMLDivElement>('#app');
 
 if (!app) {
   throw new Error('App container #app not found');
 }
-
-type LogLevel = 'INFO' | 'WARN' | 'ERROR';
-
-const loadLogs = (): string[] => {
-  const raw = localStorage.getItem(LOGS_KEY);
-  if (!raw) return [];
-
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
-  } catch {
-    return [];
-  }
-};
-
-let logs = loadLogs();
-
-const saveLogs = (): void => {
-  localStorage.setItem(LOGS_KEY, JSON.stringify(logs.slice(-LOG_LIMIT)));
-};
-
-const nowIso = (): string => new Date().toISOString();
-
-const writeLog = (level: LogLevel, message: string): void => {
-  logs.push(`[${nowIso()}] [${level}] ${message}`);
-  if (logs.length > LOG_LIMIT) {
-    logs = logs.slice(-LOG_LIMIT);
-  }
-  saveLogs();
-  renderLogs();
-};
 
 const crashDetected = localStorage.getItem(RUNNING_KEY) === 'true';
 localStorage.setItem(RUNNING_KEY, 'true');
@@ -54,6 +25,7 @@ screen.innerHTML = `
   </header>
   <main>
     <h1 class="title">Desert Boy</h1>
+    <div id="game" aria-label="Game area"></div>
   </main>
   <button type="button" class="log-toggle">Логи</button>
 `;
@@ -61,8 +33,9 @@ screen.innerHTML = `
 app.append(screen);
 
 const logToggle = screen.querySelector<HTMLButtonElement>('.log-toggle');
-if (!logToggle) {
-  throw new Error('Log toggle not found');
+const gameContainer = screen.querySelector<HTMLDivElement>('#game');
+if (!logToggle || !gameContainer) {
+  throw new Error('Required controls not found');
 }
 
 const overlay = document.createElement('div');
@@ -93,16 +66,16 @@ if (!logList || !copyButton || !clearButton || !closeButton) {
 }
 
 function renderLogs(): void {
-  if (!logList) return;
-
   logList.innerHTML = '';
-  for (const entry of logs) {
+  for (const entry of getLogs()) {
     const item = document.createElement('li');
     item.className = 'log-item';
     item.textContent = entry;
     logList.append(item);
   }
 }
+
+registerLogRenderer(renderLogs);
 
 logToggle.addEventListener('click', () => {
   overlay.hidden = false;
@@ -114,14 +87,12 @@ closeButton.addEventListener('click', () => {
 });
 
 clearButton.addEventListener('click', () => {
-  logs = [];
-  saveLogs();
-  renderLogs();
+  clearLogs();
   writeLog('INFO', 'Logs cleared by user');
 });
 
 copyButton.addEventListener('click', async () => {
-  const payload = logs.join('\n');
+  const payload = getLogs().join('\n');
   try {
     await navigator.clipboard.writeText(payload);
     writeLog('INFO', 'Logs copied to clipboard');
@@ -144,8 +115,19 @@ window.addEventListener('beforeunload', () => {
   localStorage.setItem(RUNNING_KEY, 'false');
 });
 
+const inputState = new InputState((source) => writeLog('INFO', `Input: ${source}`));
+const unbindKeyboard = bindKeyboardInput(inputState);
+const joystick = createJoystick(screen, inputState);
+const game = createGame(gameContainer, inputState);
+
 if (crashDetected) {
   writeLog('WARN', 'Detected unclean shutdown from previous session');
 }
 
 writeLog('INFO', 'Desert Boy app started');
+
+window.addEventListener('beforeunload', () => {
+  unbindKeyboard();
+  joystick.destroy();
+  game.destroy(true);
+});
