@@ -276,6 +276,31 @@ async function bootstrap(): Promise<void> {
     saveTasks(tasks);
   }
 
+  function ensureJournalInitialized(): void {
+    if (!journal) {
+      journal = createJournal(getCurrentLang, () => tasks, setTasksState);
+      openJournalButton.addEventListener('click', () => journal?.toggle());
+      window.addEventListener('keydown', (event) => {
+        if (event.code === 'KeyJ') {
+          journal?.toggle();
+        }
+      });
+    }
+
+    journal.render();
+  }
+
+  function ensureTasksForLanguage(languageCode: string): void {
+    const loaded = loadTasks();
+    if (loaded && loaded.length > 0) {
+      tasks = loaded;
+      return;
+    }
+
+    tasks = getInitialTasks(languageCode);
+    saveTasks(tasks);
+  }
+
   async function runSpeechGateForCurrentLanguage(): Promise<void> {
     await ensureSpeechRecognitionReady(() => {
       const current = getLearningLanguage();
