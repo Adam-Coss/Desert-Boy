@@ -14,6 +14,7 @@ export function createLanguagePicker(parent: HTMLElement, options: LanguagePicke
   const overlay = document.createElement('div');
   overlay.className = 'language-picker-overlay';
   overlay.hidden = true;
+  overlay.setAttribute('aria-hidden', 'true');
 
   const panel = document.createElement('section');
   panel.className = 'language-picker-panel';
@@ -43,9 +44,11 @@ export function createLanguagePicker(parent: HTMLElement, options: LanguagePicke
   return {
     open: () => {
       overlay.hidden = false;
+      overlay.setAttribute('aria-hidden', 'false');
     },
     close: () => {
       overlay.hidden = true;
+      overlay.setAttribute('aria-hidden', 'true');
     },
     element: overlay
   };
