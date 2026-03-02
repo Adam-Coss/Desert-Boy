@@ -24,7 +24,10 @@ export class WorldScene extends Phaser.Scene {
   private isNearTerminal = false;
   private isDialogueActive = false;
 
-  constructor(inputState: InputState) {
+  constructor(
+    inputState: InputState,
+    private readonly onDemoPhraseMatched: () => void
+  ) {
     super('world');
     this.inputState = inputState;
   }
@@ -133,6 +136,7 @@ export class WorldScene extends Phaser.Scene {
           if (isMatch(demoPhrase.expected, finalText)) {
             hud.setResult('✅ Засчитано');
             writeLog('INFO', 'Phrase matched');
+            this.onDemoPhraseMatched();
             return;
           }
 
