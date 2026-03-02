@@ -1,6 +1,8 @@
 import './style.css';
 import type { LearningLanguage } from './learn/languages';
+import type { Task } from './quests/tasks';
 import { showFatalError } from './ui/fatalErrorOverlay';
+import { mountHud } from './ui/hud';
 
 const RUNNING_KEY = 'desert-boy:running';
 
@@ -43,13 +45,27 @@ async function bootstrap(): Promise<void> {
   renderBootScreen(app);
   setupGlobalFatalHandlers();
 
-  const [{ bindKeyboardInput, createGame }, { InputState }, { clearLogs, getLogs, registerLogRenderer, writeLog }, { getLearningLanguage, setLearningLanguage }, { createJoystick }, { createLanguagePicker }, { ensureSpeechRecognitionReady }] = await Promise.all([
+  const [
+    { bindKeyboardInput, createGame },
+    { InputState },
+    { clearLogs, getLogs, registerLogRenderer, writeLog },
+    { getLearningLanguage, setLearningLanguage },
+    { loadTasks, saveTasks },
+    { getInitialTasks },
+    { createJoystick },
+    { createLanguagePicker },
+    { createJournal },
+    { ensureSpeechRecognitionReady }
+  ] = await Promise.all([
     import('./game/createGame'),
     import('./game/input/inputState'),
     import('./logging'),
     import('./state/settings'),
+    import('./state/progress'),
+    import('./quests/tasks'),
     import('./ui/joystick'),
     import('./ui/languagePicker'),
+    import('./ui/journal'),
     import('./ui/sttGate')
   ]);
 
@@ -64,10 +80,14 @@ async function bootstrap(): Promise<void> {
     ${crashDetected ? '<div class="crash-banner">Предыдущее завершение было некорректным</div>' : ''}
     <header id="hud" class="hud">
       <div class="hud-topline">
-        <div><strong>Нужно сказать:</strong> …</div>
-        <button type="button" class="change-language">Сменить язык</button>
+        <div class="hud-expected"><strong>Нужно сказать:</strong> …</div>
+        <div class="hud-buttons">
+          <button type="button" class="open-journal">Дневник</button>
+          <button type="button" class="change-language">Сменить язык</button>
+        </div>
       </div>
-      <div class="hud-spoken"><strong>Вы сказали:</strong> …</div>
+      <div class="hud-recognized"><strong>Вы сказали:</strong> …</div>
+      <div class="hud-result"><strong>Статус:</strong> …</div>
       <div class="learning-language"><strong>Язык:</strong> Не выбран</div>
     </header>
     <main>
@@ -86,12 +106,12 @@ async function bootstrap(): Promise<void> {
     screen.querySelector<HTMLButtonElement>('.change-language'),
     'changeLanguageButton'
   );
+  const openJournalButton = requireEl(
+    screen.querySelector<HTMLButtonElement>('.open-journal'),
+    'openJournalButton'
+  );
 
-  const spokenLabel = requireEl(screen.querySelector<HTMLDivElement>('.hud-spoken'), 'spokenLabel');
-
-  function updateHudSpoken(text: string): void {
-    spokenLabel.innerHTML = `<strong>Вы сказали:</strong> ${text || '…'}`;
-  }
+  const hud = mountHud(screen);
 
   const overlay = document.createElement('div');
   overlay.className = 'log-overlay';
@@ -167,19 +187,70 @@ async function bootstrap(): Promise<void> {
   const unbindKeyboard = bindKeyboardInput(inputState);
   const joystick = createJoystick(screen, inputState);
 
+  let tasks: Task[] = [];
   let game: ReturnType<typeof createGame> | undefined;
+  let journal: ReturnType<typeof createJournal> | undefined;
+
+  const getCurrentLang = (): string => getLearningLanguage()?.bcp47 ?? 'en-US';
+
+  const setTasksState = (nextTasks: Task[]): void => {
+    tasks = nextTasks;
+    saveTasks(tasks);
+  };
+
+  const markDemoTaskCompleted = (): void => {
+    let changed = false;
+    tasks = tasks.map((task) => {
+      if (task.id === 'demo.term_phrase' && !task.done) {
+        changed = true;
+        return { ...task, done: true };
+      }
+      return task;
+    });
+
+    if (changed) {
+      saveTasks(tasks);
+      journal?.render();
+      writeLog('INFO', 'Task completed: demo.term_phrase');
+    }
+  };
 
   function ensureGameStarted(): void {
     if (!game) {
-      game = createGame(gameContainer, inputState);
+      game = createGame(gameContainer, inputState, markDemoTaskCompleted);
     }
+  }
+
+  function ensureJournalInitialized(): void {
+    if (!journal) {
+      journal = createJournal(getCurrentLang, () => tasks, setTasksState);
+      openJournalButton.addEventListener('click', () => journal?.toggle());
+      window.addEventListener('keydown', (event) => {
+        if (event.code === 'KeyJ') {
+          journal?.toggle();
+        }
+      });
+    }
+
+    journal.render();
+  }
+
+  function ensureTasksForLanguage(languageCode: string): void {
+    const loaded = loadTasks();
+    if (loaded && loaded.length > 0) {
+      tasks = loaded;
+      return;
+    }
+
+    tasks = getInitialTasks(languageCode);
+    saveTasks(tasks);
   }
 
   async function runSpeechGateForCurrentLanguage(): Promise<void> {
     await ensureSpeechRecognitionReady(() => {
       const current = getLearningLanguage();
       return current?.bcp47 ?? 'en-US';
-    }, updateHudSpoken);
+    }, hud.setRecognized);
   }
 
   function updateHudLanguage(language: LearningLanguage): void {
@@ -194,6 +265,11 @@ async function bootstrap(): Promise<void> {
       writeLog('INFO', `Learning language set: ${language.bcp47}`);
       await runSpeechGateForCurrentLanguage();
       ensureGameStarted();
+      if (tasks.length === 0) {
+        tasks = getInitialTasks(language.bcp47);
+        saveTasks(tasks);
+      }
+      ensureJournalInitialized();
     }
   });
 
@@ -207,6 +283,8 @@ async function bootstrap(): Promise<void> {
     updateHudLanguage(savedLanguage);
     await runSpeechGateForCurrentLanguage();
     ensureGameStarted();
+    ensureTasksForLanguage(savedLanguage.bcp47);
+    ensureJournalInitialized();
   } else {
     languagePicker.open();
   }

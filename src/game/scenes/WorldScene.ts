@@ -1,16 +1,33 @@
 import Phaser from 'phaser';
+import { writeLog } from '../../logging';
+import { isMatch } from '../../learn/compare';
+import { getDemoPhrase } from '../../learn/demoPhrases';
+import { getSettings } from '../../state/settings';
+import { listenOnce } from '../../speech/oneShotListen';
+import { getHud } from '../../ui/hud';
 import { InputState } from '../input/inputState';
 
 const WORLD_WIDTH = 2000;
 const WORLD_HEIGHT = 2000;
 const GRID_SIZE = 80;
 const PLAYER_SPEED = 200;
+const INTERACT_DISTANCE = 120;
+const MAX_ATTEMPTS = 3;
 
 export class WorldScene extends Phaser.Scene {
   private readonly inputState: InputState;
   private player!: Phaser.GameObjects.Rectangle;
+  private terminal!: Phaser.GameObjects.Rectangle;
+  private interactHint!: Phaser.GameObjects.Text;
+  private terminalPrompt!: Phaser.GameObjects.Text;
+  private talkButton?: HTMLButtonElement;
+  private isNearTerminal = false;
+  private isDialogueActive = false;
 
-  constructor(inputState: InputState) {
+  constructor(
+    inputState: InputState,
+    private readonly onDemoPhraseMatched: () => void
+  ) {
     super('world');
     this.inputState = inputState;
   }
@@ -19,6 +36,38 @@ export class WorldScene extends Phaser.Scene {
     this.drawWorld();
 
     this.player = this.add.rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 36, 36, 0xf5c044).setOrigin(0.5);
+    this.terminal = this.add
+      .rectangle(this.player.x + 180, this.player.y, 48, 56, 0x67b7ff)
+      .setOrigin(0.5);
+
+    this.interactHint = this.add
+      .text(0, 0, 'Нажмите E / Tap', {
+        color: '#ffffff',
+        fontSize: '18px',
+        backgroundColor: '#00000099',
+        padding: { x: 10, y: 6 }
+      })
+      .setScrollFactor(0)
+      .setDepth(10)
+      .setVisible(false);
+
+    this.terminalPrompt = this.add
+      .text(this.terminal.x, this.terminal.y - 60, '', {
+        color: '#d3edff',
+        fontSize: '18px',
+        backgroundColor: '#00000088',
+        padding: { x: 8, y: 4 }
+      })
+      .setOrigin(0.5)
+      .setVisible(false);
+
+    this.input.keyboard?.on('keydown-E', () => {
+      if (this.isNearTerminal) {
+        void this.startDialogue();
+      }
+    });
+
+    this.createTalkButton();
 
     this.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
@@ -27,7 +76,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   update(_: number, delta: number): void {
-    const direction = this.inputState.getDirection();
+    const direction = this.isDialogueActive ? { x: 0, y: 0 } : this.inputState.getDirection();
     const seconds = delta / 1000;
 
     const nextX = this.player.x + direction.x * PLAYER_SPEED * seconds;
@@ -37,6 +86,96 @@ export class WorldScene extends Phaser.Scene {
       Phaser.Math.Clamp(nextX, this.player.width / 2, WORLD_WIDTH - this.player.width / 2),
       Phaser.Math.Clamp(nextY, this.player.height / 2, WORLD_HEIGHT - this.player.height / 2),
     );
+
+    this.updateTerminalProximity();
+  }
+
+  private updateTerminalProximity(): void {
+    const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.terminal.x, this.terminal.y);
+    const isNear = distance < INTERACT_DISTANCE;
+    this.isNearTerminal = isNear;
+
+    this.interactHint
+      .setPosition(this.cameras.main.width / 2, this.cameras.main.height - 36)
+      .setVisible(isNear && !this.isDialogueActive);
+
+    if (this.talkButton) {
+      this.talkButton.style.display = isNear && !this.isDialogueActive ? 'block' : 'none';
+    }
+  }
+
+  private async startDialogue(): Promise<void> {
+    if (this.isDialogueActive) {
+      return;
+    }
+
+    const language = getSettings().learningLanguage?.bcp47 ?? 'en-US';
+    const demoPhrase = getDemoPhrase(language);
+    const hud = getHud();
+
+    this.isDialogueActive = true;
+    this.inputState.setKeyboard(0, 0);
+    this.inputState.setJoystick(0, 0);
+    this.interactHint.setVisible(false);
+    if (this.talkButton) {
+      this.talkButton.style.display = 'none';
+    }
+
+    this.terminalPrompt.setText(`${demoPhrase.npcPrompt} ${demoPhrase.expected}`).setVisible(true);
+    hud.setExpected(demoPhrase.expected);
+    hud.setRecognized('…');
+
+    try {
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+        hud.setResult('Слушаю...');
+
+        try {
+          const { finalText } = await listenOnce(language);
+          hud.setRecognized(finalText);
+
+          if (isMatch(demoPhrase.expected, finalText)) {
+            hud.setResult('✅ Засчитано');
+            writeLog('INFO', 'Phrase matched');
+            this.onDemoPhraseMatched();
+            return;
+          }
+
+          hud.setResult('Повторите, пожалуйста');
+          writeLog('WARN', 'Phrase mismatch');
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          hud.setResult('Не получилось распознать. Повторите, пожалуйста.');
+          writeLog('ERROR', `Phrase recognition failed: ${errorMessage}`);
+        }
+      }
+
+      hud.setResult('Пока пропустим');
+    } finally {
+      this.terminalPrompt.setVisible(false);
+      this.isDialogueActive = false;
+      this.updateTerminalProximity();
+    }
+  }
+
+  private createTalkButton(): void {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'talk-button';
+    button.textContent = 'Talk';
+    button.style.display = 'none';
+    button.addEventListener('click', () => {
+      if (this.isNearTerminal) {
+        void this.startDialogue();
+      }
+    });
+
+    document.body.append(button);
+    this.talkButton = button;
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      button.remove();
+      this.talkButton = undefined;
+    });
   }
 
   private drawWorld(): void {
