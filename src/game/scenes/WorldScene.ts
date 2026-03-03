@@ -29,6 +29,13 @@ function getOverlayAlpha(period: GameTime['period']): number {
   return 0.3;
 }
 
+function getOverlayAlpha(period: GameTime['period']): number {
+  if (period === 'morning') return 0.05;
+  if (period === 'day') return 0;
+  if (period === 'evening') return 0.15;
+  return 0.3;
+}
+
 export class WorldScene extends Phaser.Scene {
   private readonly inputState: InputState;
   private player!: Phaser.GameObjects.Rectangle;
@@ -106,6 +113,48 @@ export class WorldScene extends Phaser.Scene {
 
     this.input.keyboard?.addKey('N').on('down', () => {
       this.onDebugNextDay();
+    });
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      for (const label of this.labels) {
+        label.destroy();
+      }
+      this.labels.length = 0;
+    });
+
+    this.nightOverlay = this.add
+      .rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, WORLD_WIDTH, WORLD_HEIGHT, 0x000000)
+      .setOrigin(0.5)
+      .setAlpha(getOverlayAlpha(this.getTime().period));
+
+    const playerLabel = attachLabel(this, this.player, 'Player');
+    const shopLabel = attachLabel(this, this.shop, 'Shop');
+    const terminalLabel = attachLabel(this, this.terminal, 'Terminal');
+
+    this.labels.push(
+      {
+        update: playerLabel.update,
+        setVisible: (v: boolean) => playerLabel.textObj.setVisible(v),
+        destroy: () => playerLabel.textObj.destroy()
+      },
+      {
+        update: shopLabel.update,
+        setVisible: (v: boolean) => shopLabel.textObj.setVisible(v),
+        destroy: () => shopLabel.textObj.destroy()
+      },
+      {
+        update: terminalLabel.update,
+        setVisible: (v: boolean) => terminalLabel.textObj.setVisible(v),
+        destroy: () => terminalLabel.textObj.destroy()
+      }
+    );
+
+    this.toggleLabels(true);
+    writeLog('INFO', 'Debug labels enabled');
+
+    this.input.keyboard?.addKey('L').on('down', () => {
+      this.toggleLabels(!this.labelsVisible);
+      writeLog('INFO', `Debug labels: ${this.labelsVisible ? 'on' : 'off'}`);
     });
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -399,6 +448,10 @@ export class WorldScene extends Phaser.Scene {
     this.npcPrompt.setVisible(false);
     this.isDialogueActive = false;
     this.updateInteractionAvailability();
+
+    for (const label of this.labels) {
+      label.update();
+    }
   }
 
   private createTalkButton(): void {
