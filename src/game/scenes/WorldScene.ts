@@ -385,6 +385,10 @@ export class WorldScene extends Phaser.Scene {
     this.npcPrompt.setVisible(false);
     this.isDialogueActive = false;
     this.updateInteractionAvailability();
+
+    for (const label of this.labels) {
+      label.update();
+    }
   }
 
   private createTalkButton(): void {

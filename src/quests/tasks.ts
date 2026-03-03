@@ -65,8 +65,21 @@ export function ensureShopTasks(langBcp47: string, currentTasks: Task[]): Task[]
       createdAt: Date.now(),
       repeat: null
     });
+    return nextTasks;
   }
 
+  const current = nextTasks[idx];
+  const next: Task = {
+    ...current,
+    title: 'Покормить кошку',
+    phraseKey: phrase.id,
+    expected: phrase.expected,
+    repeat: 'daily',
+    dayTag: dayIndex,
+    done: current.dayTag === dayIndex ? current.done : false
+  };
+
+  nextTasks[idx] = next;
   return nextTasks;
 }
 
