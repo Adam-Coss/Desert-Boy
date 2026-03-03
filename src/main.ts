@@ -53,7 +53,7 @@ async function bootstrap(): Promise<void> {
     { getLearningLanguage, setLearningLanguage },
     { loadTasks, saveTasks },
     { loadInventory, saveInventory },
-    { ensureDailyCatTasks, ensureShopTasks, getInitialTasks },
+    { ensureDailyCatTask, ensureShopTasks, getInitialTasks },
     { createJoystick },
     { createLanguagePicker },
     { createJournal },
@@ -207,10 +207,10 @@ async function bootstrap(): Promise<void> {
 
   function refreshDailyTasks(dayIndex: number): void {
     const currentLang = getCurrentLang();
-    tasks = ensureDailyCatTasks(currentLang, dayIndex, tasks);
+    tasks = ensureDailyCatTask(currentLang, dayIndex, tasks);
     saveTasks(tasks);
     journal?.render();
-    writeLog('INFO', `Daily tasks refreshed for day ${dayIndex}`);
+    writeLog('INFO', `Daily cat task refreshed for day ${dayIndex}`);
   }
 
   const setTasksState = (nextTasks: Task[]): void => {
@@ -333,7 +333,7 @@ async function bootstrap(): Promise<void> {
     const loaded = loadTasks();
     tasks = loaded && loaded.length > 0 ? loaded : getInitialTasks(languageCode);
     tasks = ensureShopTasks(languageCode, tasks);
-    tasks = ensureDailyCatTasks(languageCode, gameTime.dayIndex, tasks);
+    tasks = ensureDailyCatTask(languageCode, gameTime.dayIndex, tasks);
     saveTasks(tasks);
   }
 

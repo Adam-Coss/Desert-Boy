@@ -65,12 +65,25 @@ export function ensureShopTasks(langBcp47: string, currentTasks: Task[]): Task[]
       createdAt: Date.now(),
       repeat: null
     });
+    return nextTasks;
   }
 
+  const current = nextTasks[idx];
+  const next: Task = {
+    ...current,
+    title: 'Покормить кошку',
+    phraseKey: phrase.id,
+    expected: phrase.expected,
+    repeat: 'daily',
+    dayTag: dayIndex,
+    done: current.dayTag === dayIndex ? current.done : false
+  };
+
+  nextTasks[idx] = next;
   return nextTasks;
 }
 
-export function ensureDailyCatTasks(langBcp47: string, dayIndex: number, tasks: Task[]): Task[] {
+export function ensureDailyCatTask(langBcp47: string, dayIndex: number, tasks: Task[]): Task[] {
   const phrase = getFeedCatPhrase(langBcp47);
   const nextTasks = [...tasks];
   const idx = nextTasks.findIndex((task) => task.id === 'cat.feed');
@@ -103,3 +116,5 @@ export function ensureDailyCatTasks(langBcp47: string, dayIndex: number, tasks: 
   nextTasks[idx] = next;
   return nextTasks;
 }
+
+export const ensureDailyCatTasks = ensureDailyCatTask;
