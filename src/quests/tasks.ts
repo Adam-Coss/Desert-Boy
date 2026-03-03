@@ -29,7 +29,17 @@ export function ensureShopTasks(langBcp47: string, currentTasks: Task[]): Task[]
   const buyStep = shopFlow.steps.find((step) => step.id === 'shop.do_you_have_cat_food');
   const noThanksStep = shopFlow.steps.find((step) => step.id === 'shop.no_thanks');
 
-  const nextTasks = [...currentTasks];
+  const nextTasks = currentTasks.map((task) => {
+    if (task.id === 'shop.buy_cat_food') {
+      return { ...task, expected: buyStep?.expected };
+    }
+
+    if (task.id === 'shop.say_no_thanks') {
+      return { ...task, expected: noThanksStep?.expected };
+    }
+
+    return task;
+  });
 
   if (!nextTasks.some((task) => task.id === 'shop.buy_cat_food')) {
     nextTasks.push({
