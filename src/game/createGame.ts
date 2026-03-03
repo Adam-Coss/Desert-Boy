@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import type { GameTime } from '../state/time';
 import { InputState } from './input/inputState';
 import { WorldScene } from './scenes/WorldScene';
 import { writeLog } from '../logging';
@@ -7,7 +8,13 @@ export const createGame = (
   container: HTMLElement,
   inputState: InputState,
   onDemoPhraseMatched: () => void,
-  onShopCompleted: () => void
+  onShopCompleted: () => void,
+  onCatFed: () => void,
+  onDebugNextDay: () => void,
+  getCatFood: () => number,
+  getTime: () => GameTime,
+  setTime: (time: GameTime) => void,
+  persistTime: (time: GameTime) => void
 ): Phaser.Game => {
   const game = new Phaser.Game({
     type: Phaser.AUTO,
@@ -15,7 +22,19 @@ export const createGame = (
     width: container.clientWidth,
     height: container.clientHeight,
     backgroundColor: '#1e2436',
-    scene: [new WorldScene(inputState, onDemoPhraseMatched, onShopCompleted)],
+    scene: [
+      new WorldScene(
+        inputState,
+        onDemoPhraseMatched,
+        onShopCompleted,
+        onCatFed,
+        onDebugNextDay,
+        getCatFood,
+        getTime,
+        setTime,
+        persistTime
+      )
+    ],
     physics: {
       default: 'arcade',
       arcade: {

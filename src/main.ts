@@ -53,11 +53,12 @@ async function bootstrap(): Promise<void> {
     { getLearningLanguage, setLearningLanguage },
     { loadTasks, saveTasks },
     { loadInventory, saveInventory },
-    { ensureShopTasks, getInitialTasks },
+    { ensureDailyCatTask, ensureShopTasks, getInitialTasks },
     { createJoystick },
     { createLanguagePicker },
     { createJournal },
-    { ensureSpeechRecognitionReady }
+    { ensureSpeechRecognitionReady },
+    { loadTime, saveTime }
   ] = await Promise.all([
     import('./game/createGame'),
     import('./game/input/inputState'),
@@ -69,7 +70,8 @@ async function bootstrap(): Promise<void> {
     import('./ui/joystick'),
     import('./ui/languagePicker'),
     import('./ui/journal'),
-    import('./ui/sttGate')
+    import('./ui/sttGate'),
+    import('./state/time')
   ]);
 
   window.__DESERT_BOY_WRITE_LOG__ = writeLog;
@@ -87,11 +89,13 @@ async function bootstrap(): Promise<void> {
         <div class="hud-buttons">
           <button type="button" class="open-journal">Дневник</button>
           <button type="button" class="change-language">Сменить язык</button>
+          <button type="button" class="next-day">Next day</button>
         </div>
       </div>
       <div class="hud-recognized"><strong>Вы сказали:</strong> …</div>
       <div class="hud-result"><strong>Статус:</strong> …</div>
       <div class="hud-inventory"><strong>Cat food:</strong> 0</div>
+      <div class="hud-time"><strong>День:</strong> 1, <strong>Время:</strong> 08:00, <strong>Период:</strong> Утро (morning)</div>
       <div class="learning-language"><strong>Язык:</strong> Не выбран</div>
     </header>
     <main>
@@ -114,6 +118,7 @@ async function bootstrap(): Promise<void> {
     screen.querySelector<HTMLButtonElement>('.open-journal'),
     'openJournalButton'
   );
+  const nextDayButton = requireEl(screen.querySelector<HTMLButtonElement>('.next-day'), 'nextDayButton');
 
   const hud = mountHud(screen);
 
@@ -195,8 +200,18 @@ async function bootstrap(): Promise<void> {
   let inventory: Inventory = loadInventory();
   let game: ReturnType<typeof createGame> | undefined;
   let journal: ReturnType<typeof createJournal> | undefined;
+  let gameTime = loadTime();
 
   const getCurrentLang = (): string => getLearningLanguage()?.bcp47 ?? 'en-US';
+
+
+  function refreshDailyTasks(dayIndex: number): void {
+    const currentLang = getCurrentLang();
+    tasks = ensureDailyCatTask(currentLang, dayIndex, tasks);
+    saveTasks(tasks);
+    journal?.render();
+    writeLog('INFO', `Daily cat task refreshed for day ${dayIndex}`);
+  }
 
   const setTasksState = (nextTasks: Task[]): void => {
     tasks = nextTasks;
@@ -244,9 +259,59 @@ async function bootstrap(): Promise<void> {
     writeLog('INFO', 'Shop completed, catFood +1');
   };
 
+
+  const feedCatCompleted = (): void => {
+    if (inventory.catFood <= 0) {
+      return;
+    }
+
+    inventory = { ...inventory, catFood: inventory.catFood - 1 };
+    tasks = tasks.map((task) => {
+      if (task.id === 'cat.feed' && task.dayTag === gameTime.dayIndex) {
+        return { ...task, done: true };
+      }
+      return task;
+    });
+
+    saveInventory(inventory);
+    saveTasks(tasks);
+    hud.setCatFood(inventory.catFood);
+    journal?.render();
+  };
+
+  const debugNextDay = (): void => {
+    gameTime = {
+      dayIndex: gameTime.dayIndex + 1,
+      minutesOfDay: 8 * 60,
+      period: 'morning'
+    };
+    hud.setTime(gameTime);
+    saveTime(gameTime);
+    refreshDailyTasks(gameTime.dayIndex);
+    writeLog('INFO', 'Debug: next day');
+  };
+
   function ensureGameStarted(): void {
     if (!game) {
-      game = createGame(gameContainer, inputState, markDemoTaskCompleted, completeShopFlow);
+      game = createGame(
+        gameContainer,
+        inputState,
+        markDemoTaskCompleted,
+        completeShopFlow,
+        feedCatCompleted,
+        debugNextDay,
+        () => inventory.catFood,
+        () => gameTime,
+        (nextTime) => {
+          const dayChanged = nextTime.dayIndex !== gameTime.dayIndex;
+          gameTime = nextTime;
+          hud.setTime(nextTime);
+          if (dayChanged) {
+            refreshDailyTasks(nextTime.dayIndex);
+          }
+        },
+        saveTime
+      );
     }
   }
 
@@ -267,37 +332,8 @@ async function bootstrap(): Promise<void> {
   function ensureTasksForLanguage(languageCode: string): void {
     const loaded = loadTasks();
     tasks = loaded && loaded.length > 0 ? loaded : getInitialTasks(languageCode);
-    const next = ensureShopTasks(languageCode, tasks);
-
-    if (next.length !== tasks.length) {
-      tasks = next;
-    }
-
-    saveTasks(tasks);
-  }
-
-  function ensureJournalInitialized(): void {
-    if (!journal) {
-      journal = createJournal(getCurrentLang, () => tasks, setTasksState);
-      openJournalButton.addEventListener('click', () => journal?.toggle());
-      window.addEventListener('keydown', (event) => {
-        if (event.code === 'KeyJ') {
-          journal?.toggle();
-        }
-      });
-    }
-
-    journal.render();
-  }
-
-  function ensureTasksForLanguage(languageCode: string): void {
-    const loaded = loadTasks();
-    if (loaded && loaded.length > 0) {
-      tasks = loaded;
-      return;
-    }
-
-    tasks = getInitialTasks(languageCode);
+    tasks = ensureShopTasks(languageCode, tasks);
+    tasks = ensureDailyCatTask(languageCode, gameTime.dayIndex, tasks);
     saveTasks(tasks);
   }
 
@@ -331,6 +367,10 @@ async function bootstrap(): Promise<void> {
     languagePicker.open();
   });
 
+  nextDayButton.addEventListener('click', () => {
+    debugNextDay();
+  });
+
   const savedLanguage = getLearningLanguage();
   if (savedLanguage) {
     updateHudLanguage(savedLanguage);
@@ -344,6 +384,8 @@ async function bootstrap(): Promise<void> {
 
   inventory = loadInventory();
   hud.setCatFood(inventory.catFood);
+  hud.setTime(gameTime);
+  writeLog('INFO', `Time loaded: day ${gameTime.dayIndex} ${String(Math.floor(gameTime.minutesOfDay / 60)).padStart(2, '0')}:${String(Math.floor(gameTime.minutesOfDay % 60)).padStart(2, '0')}`);
 
   if (crashDetected) {
     writeLog('WARN', 'Detected unclean shutdown from previous session');
