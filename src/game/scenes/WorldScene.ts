@@ -29,13 +29,6 @@ function getOverlayAlpha(period: GameTime['period']): number {
   return 0.3;
 }
 
-function getOverlayAlpha(period: GameTime['period']): number {
-  if (period === 'morning') return 0.05;
-  if (period === 'day') return 0;
-  if (period === 'evening') return 0.15;
-  return 0.3;
-}
-
 export class WorldScene extends Phaser.Scene {
   private readonly inputState: InputState;
   private player!: Phaser.GameObjects.Rectangle;
@@ -50,7 +43,10 @@ export class WorldScene extends Phaser.Scene {
   private isDialogueActive = false;
   private saveTimerMs = 0;
   private labelsVisible = true;
-  private readonly labels: Array<{ update(): void; setVisible(v: boolean): void; destroy(): void }> = [];
+  private playerLabel?: { textObj: Phaser.GameObjects.Text; update(): void };
+  private shopLabel?: { textObj: Phaser.GameObjects.Text; update(): void };
+  private terminalLabel?: { textObj: Phaser.GameObjects.Text; update(): void };
+  private catLabel?: { textObj: Phaser.GameObjects.Text; update(): void };
 
   constructor(
     inputState: InputState,
@@ -75,33 +71,10 @@ export class WorldScene extends Phaser.Scene {
     this.shop = this.add.rectangle(this.player.x, this.player.y + 220, 64, 48, 0x8fdd7b).setOrigin(0.5);
     this.cat = this.add.rectangle(this.player.x - 170, this.player.y + 60, 34, 24, 0xff9ac8).setOrigin(0.5);
 
-    const playerLabel = attachLabel(this, this.player, 'Player');
-    const shopLabel = attachLabel(this, this.shop, 'Shop');
-    const terminalLabel = attachLabel(this, this.terminal, 'Terminal');
-    const catLabel = attachLabel(this, this.cat, 'Cat');
-
-    this.labels.push(
-      {
-        update: playerLabel.update,
-        setVisible: (v: boolean) => playerLabel.textObj.setVisible(v),
-        destroy: () => playerLabel.textObj.destroy()
-      },
-      {
-        update: shopLabel.update,
-        setVisible: (v: boolean) => shopLabel.textObj.setVisible(v),
-        destroy: () => shopLabel.textObj.destroy()
-      },
-      {
-        update: terminalLabel.update,
-        setVisible: (v: boolean) => terminalLabel.textObj.setVisible(v),
-        destroy: () => terminalLabel.textObj.destroy()
-      },
-      {
-        update: catLabel.update,
-        setVisible: (v: boolean) => catLabel.textObj.setVisible(v),
-        destroy: () => catLabel.textObj.destroy()
-      }
-    );
+    this.playerLabel = attachLabel(this, this.player, 'Player');
+    this.shopLabel = attachLabel(this, this.shop, 'Shop');
+    this.terminalLabel = attachLabel(this, this.terminal, 'Terminal');
+    this.catLabel = attachLabel(this, this.cat, 'Cat');
 
     this.toggleLabels(true);
     writeLog('INFO', 'Debug labels enabled');
@@ -116,52 +89,14 @@ export class WorldScene extends Phaser.Scene {
     });
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      for (const label of this.labels) {
-        label.destroy();
-      }
-      this.labels.length = 0;
-    });
-
-    this.nightOverlay = this.add
-      .rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, WORLD_WIDTH, WORLD_HEIGHT, 0x000000)
-      .setOrigin(0.5)
-      .setAlpha(getOverlayAlpha(this.getTime().period));
-
-    const playerLabel = attachLabel(this, this.player, 'Player');
-    const shopLabel = attachLabel(this, this.shop, 'Shop');
-    const terminalLabel = attachLabel(this, this.terminal, 'Terminal');
-
-    this.labels.push(
-      {
-        update: playerLabel.update,
-        setVisible: (v: boolean) => playerLabel.textObj.setVisible(v),
-        destroy: () => playerLabel.textObj.destroy()
-      },
-      {
-        update: shopLabel.update,
-        setVisible: (v: boolean) => shopLabel.textObj.setVisible(v),
-        destroy: () => shopLabel.textObj.destroy()
-      },
-      {
-        update: terminalLabel.update,
-        setVisible: (v: boolean) => terminalLabel.textObj.setVisible(v),
-        destroy: () => terminalLabel.textObj.destroy()
-      }
-    );
-
-    this.toggleLabels(true);
-    writeLog('INFO', 'Debug labels enabled');
-
-    this.input.keyboard?.addKey('L').on('down', () => {
-      this.toggleLabels(!this.labelsVisible);
-      writeLog('INFO', `Debug labels: ${this.labelsVisible ? 'on' : 'off'}`);
-    });
-
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      for (const label of this.labels) {
-        label.destroy();
-      }
-      this.labels.length = 0;
+      this.playerLabel?.textObj.destroy();
+      this.shopLabel?.textObj.destroy();
+      this.terminalLabel?.textObj.destroy();
+      this.catLabel?.textObj.destroy();
+      this.playerLabel = undefined;
+      this.shopLabel = undefined;
+      this.terminalLabel = undefined;
+      this.catLabel = undefined;
     });
 
     this.nightOverlay = this.add
@@ -232,16 +167,18 @@ export class WorldScene extends Phaser.Scene {
 
     this.updateInteractionAvailability();
 
-    for (const label of this.labels) {
-      label.update();
-    }
+    this.playerLabel?.update();
+    this.shopLabel?.update();
+    this.terminalLabel?.update();
+    this.catLabel?.update();
   }
 
   private toggleLabels(visible: boolean): void {
     this.labelsVisible = visible;
-    for (const label of this.labels) {
-      label.setVisible(visible);
-    }
+    this.playerLabel?.textObj.setVisible(visible);
+    this.shopLabel?.textObj.setVisible(visible);
+    this.terminalLabel?.textObj.setVisible(visible);
+    this.catLabel?.textObj.setVisible(visible);
   }
 
   private updateInteractionAvailability(): void {
