@@ -8,6 +8,7 @@ import type { GameTime } from '../../state/time';
 import { tickTime } from '../../state/time';
 import { listenOnce } from '../../speech/oneShotListen';
 import { getHud } from '../../ui/hud';
+import { attachLabel } from '../debug/labels';
 import { InputState } from '../input/inputState';
 
 const WORLD_WIDTH = 2000;
@@ -39,6 +40,8 @@ export class WorldScene extends Phaser.Scene {
   private activeInteractable: Interactable = 'none';
   private isDialogueActive = false;
   private saveTimerMs = 0;
+  private labelsVisible = true;
+  private readonly labels: Array<{ update(): void; setVisible(v: boolean): void; destroy(): void }> = [];
 
   constructor(
     inputState: InputState,
@@ -58,6 +61,43 @@ export class WorldScene extends Phaser.Scene {
     this.player = this.add.rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 36, 36, 0xf5c044).setOrigin(0.5);
     this.terminal = this.add.rectangle(this.player.x + 180, this.player.y, 48, 56, 0x67b7ff).setOrigin(0.5);
     this.shop = this.add.rectangle(this.player.x, this.player.y + 220, 64, 48, 0x8fdd7b).setOrigin(0.5);
+
+    const playerLabel = attachLabel(this, this.player, 'Player');
+    const shopLabel = attachLabel(this, this.shop, 'Shop');
+    const terminalLabel = attachLabel(this, this.terminal, 'Terminal');
+
+    this.labels.push(
+      {
+        update: playerLabel.update,
+        setVisible: (v: boolean) => playerLabel.textObj.setVisible(v),
+        destroy: () => playerLabel.textObj.destroy()
+      },
+      {
+        update: shopLabel.update,
+        setVisible: (v: boolean) => shopLabel.textObj.setVisible(v),
+        destroy: () => shopLabel.textObj.destroy()
+      },
+      {
+        update: terminalLabel.update,
+        setVisible: (v: boolean) => terminalLabel.textObj.setVisible(v),
+        destroy: () => terminalLabel.textObj.destroy()
+      }
+    );
+
+    this.toggleLabels(true);
+    writeLog('INFO', 'Debug labels enabled');
+
+    this.input.keyboard?.addKey('L').on('down', () => {
+      this.toggleLabels(!this.labelsVisible);
+      writeLog('INFO', `Debug labels: ${this.labelsVisible ? 'on' : 'off'}`);
+    });
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      for (const label of this.labels) {
+        label.destroy();
+      }
+      this.labels.length = 0;
+    });
 
     this.nightOverlay = this.add
       .rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, WORLD_WIDTH, WORLD_HEIGHT, 0x000000)
@@ -126,6 +166,17 @@ export class WorldScene extends Phaser.Scene {
     );
 
     this.updateInteractionAvailability();
+
+    for (const label of this.labels) {
+      label.update();
+    }
+  }
+
+  private toggleLabels(visible: boolean): void {
+    this.labelsVisible = visible;
+    for (const label of this.labels) {
+      label.setVisible(visible);
+    }
   }
 
   private updateInteractionAvailability(): void {
@@ -270,6 +321,10 @@ export class WorldScene extends Phaser.Scene {
     this.npcPrompt.setVisible(false);
     this.isDialogueActive = false;
     this.updateInteractionAvailability();
+
+    for (const label of this.labels) {
+      label.update();
+    }
   }
 
   private createTalkButton(): void {
