@@ -57,7 +57,8 @@ async function bootstrap(): Promise<void> {
     { createJoystick },
     { createLanguagePicker },
     { createJournal },
-    { ensureSpeechRecognitionReady }
+    { ensureSpeechRecognitionReady },
+    { loadTime, saveTime }
   ] = await Promise.all([
     import('./game/createGame'),
     import('./game/input/inputState'),
@@ -69,7 +70,8 @@ async function bootstrap(): Promise<void> {
     import('./ui/joystick'),
     import('./ui/languagePicker'),
     import('./ui/journal'),
-    import('./ui/sttGate')
+    import('./ui/sttGate'),
+    import('./state/time')
   ]);
 
   window.__DESERT_BOY_WRITE_LOG__ = writeLog;
@@ -92,6 +94,7 @@ async function bootstrap(): Promise<void> {
       <div class="hud-recognized"><strong>Вы сказали:</strong> …</div>
       <div class="hud-result"><strong>Статус:</strong> …</div>
       <div class="hud-inventory"><strong>Cat food:</strong> 0</div>
+      <div class="hud-time"><strong>День:</strong> 1, <strong>Время:</strong> 08:00, <strong>Период:</strong> Утро (morning)</div>
       <div class="learning-language"><strong>Язык:</strong> Не выбран</div>
     </header>
     <main>
@@ -195,6 +198,7 @@ async function bootstrap(): Promise<void> {
   let inventory: Inventory = loadInventory();
   let game: ReturnType<typeof createGame> | undefined;
   let journal: ReturnType<typeof createJournal> | undefined;
+  let gameTime = loadTime();
 
   const getCurrentLang = (): string => getLearningLanguage()?.bcp47 ?? 'en-US';
 
@@ -246,7 +250,18 @@ async function bootstrap(): Promise<void> {
 
   function ensureGameStarted(): void {
     if (!game) {
-      game = createGame(gameContainer, inputState, markDemoTaskCompleted, completeShopFlow);
+      game = createGame(
+        gameContainer,
+        inputState,
+        markDemoTaskCompleted,
+        completeShopFlow,
+        () => gameTime,
+        (nextTime) => {
+          gameTime = nextTime;
+          hud.setTime(nextTime);
+        },
+        saveTime
+      );
     }
   }
 
@@ -267,37 +282,7 @@ async function bootstrap(): Promise<void> {
   function ensureTasksForLanguage(languageCode: string): void {
     const loaded = loadTasks();
     tasks = loaded && loaded.length > 0 ? loaded : getInitialTasks(languageCode);
-    const next = ensureShopTasks(languageCode, tasks);
-
-    if (next.length !== tasks.length) {
-      tasks = next;
-    }
-
-    saveTasks(tasks);
-  }
-
-  function ensureJournalInitialized(): void {
-    if (!journal) {
-      journal = createJournal(getCurrentLang, () => tasks, setTasksState);
-      openJournalButton.addEventListener('click', () => journal?.toggle());
-      window.addEventListener('keydown', (event) => {
-        if (event.code === 'KeyJ') {
-          journal?.toggle();
-        }
-      });
-    }
-
-    journal.render();
-  }
-
-  function ensureTasksForLanguage(languageCode: string): void {
-    const loaded = loadTasks();
-    if (loaded && loaded.length > 0) {
-      tasks = loaded;
-      return;
-    }
-
-    tasks = getInitialTasks(languageCode);
+    tasks = ensureShopTasks(languageCode, tasks);
     saveTasks(tasks);
   }
 
@@ -344,6 +329,8 @@ async function bootstrap(): Promise<void> {
 
   inventory = loadInventory();
   hud.setCatFood(inventory.catFood);
+  hud.setTime(gameTime);
+  writeLog('INFO', `Time loaded: day ${gameTime.dayIndex} ${String(Math.floor(gameTime.minutesOfDay / 60)).padStart(2, '0')}:${String(Math.floor(gameTime.minutesOfDay % 60)).padStart(2, '0')}`);
 
   if (crashDetected) {
     writeLog('WARN', 'Detected unclean shutdown from previous session');
