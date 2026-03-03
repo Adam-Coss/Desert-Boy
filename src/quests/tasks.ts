@@ -25,7 +25,7 @@ export function getInitialTasks(langBcp47: string): Task[] {
 }
 
 export function ensureShopTasks(langBcp47: string, currentTasks: Task[]): Task[] {
-  const shopFlow = getShopFlow(langBcp47);
+  const shopFlow = getShopFlow(langBcp47, 'day');
   const buyStep = shopFlow.steps.find((step) => step.id === 'shop.do_you_have_cat_food');
   const noThanksStep = shopFlow.steps.find((step) => step.id === 'shop.no_thanks');
 

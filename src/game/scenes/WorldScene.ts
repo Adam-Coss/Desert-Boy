@@ -4,6 +4,8 @@ import { isMatch } from '../../learn/compare';
 import { getDemoPhrase } from '../../learn/demoPhrases';
 import { getShopFlow } from '../../learn/shopPhrases';
 import { getSettings } from '../../state/settings';
+import type { GameTime } from '../../state/time';
+import { tickTime } from '../../state/time';
 import { listenOnce } from '../../speech/oneShotListen';
 import { getHud } from '../../ui/hud';
 import { InputState } from '../input/inputState';
@@ -14,8 +16,16 @@ const GRID_SIZE = 80;
 const PLAYER_SPEED = 200;
 const INTERACT_DISTANCE = 120;
 const MAX_ATTEMPTS = 3;
+const TIME_SAVE_THROTTLE_MS = 2000;
 
 type Interactable = 'none' | 'terminal' | 'shop';
+
+function getOverlayAlpha(period: GameTime['period']): number {
+  if (period === 'morning') return 0.05;
+  if (period === 'day') return 0;
+  if (period === 'evening') return 0.15;
+  return 0.3;
+}
 
 export class WorldScene extends Phaser.Scene {
   private readonly inputState: InputState;
@@ -24,14 +34,19 @@ export class WorldScene extends Phaser.Scene {
   private shop!: Phaser.GameObjects.Rectangle;
   private interactHint!: Phaser.GameObjects.Text;
   private npcPrompt!: Phaser.GameObjects.Text;
+  private nightOverlay!: Phaser.GameObjects.Rectangle;
   private talkButton?: HTMLButtonElement;
   private activeInteractable: Interactable = 'none';
   private isDialogueActive = false;
+  private saveTimerMs = 0;
 
   constructor(
     inputState: InputState,
     private readonly onDemoPhraseMatched: () => void,
-    private readonly onShopCompleted: () => void
+    private readonly onShopCompleted: () => void,
+    private readonly getTime: () => GameTime,
+    private readonly setTime: (time: GameTime) => void,
+    private readonly persistTime: (time: GameTime) => void
   ) {
     super('world');
     this.inputState = inputState;
@@ -43,6 +58,11 @@ export class WorldScene extends Phaser.Scene {
     this.player = this.add.rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 36, 36, 0xf5c044).setOrigin(0.5);
     this.terminal = this.add.rectangle(this.player.x + 180, this.player.y, 48, 56, 0x67b7ff).setOrigin(0.5);
     this.shop = this.add.rectangle(this.player.x, this.player.y + 220, 64, 48, 0x8fdd7b).setOrigin(0.5);
+
+    this.nightOverlay = this.add
+      .rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, WORLD_WIDTH, WORLD_HEIGHT, 0x000000)
+      .setOrigin(0.5)
+      .setAlpha(getOverlayAlpha(this.getTime().period));
 
     this.interactHint = this.add
       .text(0, 0, 'Нажмите E / Tap', {
@@ -78,6 +98,22 @@ export class WorldScene extends Phaser.Scene {
   }
 
   update(_: number, delta: number): void {
+    const previousTime = this.getTime();
+    const nextTime = tickTime(previousTime, delta);
+    const periodChanged = previousTime.period !== nextTime.period;
+    const dayChanged = previousTime.dayIndex !== nextTime.dayIndex;
+
+    this.setTime(nextTime);
+    if (periodChanged) {
+      this.nightOverlay.setAlpha(getOverlayAlpha(nextTime.period));
+    }
+
+    this.saveTimerMs += delta;
+    if (periodChanged || dayChanged || this.saveTimerMs >= TIME_SAVE_THROTTLE_MS) {
+      this.persistTime(nextTime);
+      this.saveTimerMs = 0;
+    }
+
     const direction = this.isDialogueActive ? { x: 0, y: 0 } : this.inputState.getDirection();
     const seconds = delta / 1000;
 
@@ -173,7 +209,7 @@ export class WorldScene extends Phaser.Scene {
 
   private async startShopDialogue(): Promise<void> {
     const language = getSettings().learningLanguage?.bcp47 ?? 'en-US';
-    const flow = getShopFlow(language);
+    const flow = getShopFlow(language, this.getTime().period);
     const hud = getHud();
 
     this.lockInteraction();
