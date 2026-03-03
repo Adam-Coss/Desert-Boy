@@ -53,7 +53,7 @@ async function bootstrap(): Promise<void> {
     { getLearningLanguage, setLearningLanguage },
     { loadTasks, saveTasks },
     { loadInventory, saveInventory },
-    { ensureShopTasks, getInitialTasks },
+    { ensureDailyCatTasks, ensureShopTasks, getInitialTasks },
     { createJoystick },
     { createLanguagePicker },
     { createJournal },
@@ -89,6 +89,7 @@ async function bootstrap(): Promise<void> {
         <div class="hud-buttons">
           <button type="button" class="open-journal">Дневник</button>
           <button type="button" class="change-language">Сменить язык</button>
+          <button type="button" class="next-day">Next day</button>
         </div>
       </div>
       <div class="hud-recognized"><strong>Вы сказали:</strong> …</div>
@@ -117,6 +118,7 @@ async function bootstrap(): Promise<void> {
     screen.querySelector<HTMLButtonElement>('.open-journal'),
     'openJournalButton'
   );
+  const nextDayButton = requireEl(screen.querySelector<HTMLButtonElement>('.next-day'), 'nextDayButton');
 
   const hud = mountHud(screen);
 
@@ -202,6 +204,15 @@ async function bootstrap(): Promise<void> {
 
   const getCurrentLang = (): string => getLearningLanguage()?.bcp47 ?? 'en-US';
 
+
+  function refreshDailyTasks(dayIndex: number): void {
+    const currentLang = getCurrentLang();
+    tasks = ensureDailyCatTasks(currentLang, dayIndex, tasks);
+    saveTasks(tasks);
+    journal?.render();
+    writeLog('INFO', `Daily tasks refreshed for day ${dayIndex}`);
+  }
+
   const setTasksState = (nextTasks: Task[]): void => {
     tasks = nextTasks;
     saveTasks(tasks);
@@ -248,6 +259,38 @@ async function bootstrap(): Promise<void> {
     writeLog('INFO', 'Shop completed, catFood +1');
   };
 
+
+  const feedCatCompleted = (): void => {
+    if (inventory.catFood <= 0) {
+      return;
+    }
+
+    inventory = { ...inventory, catFood: inventory.catFood - 1 };
+    tasks = tasks.map((task) => {
+      if (task.id === 'cat.feed' && task.dayTag === gameTime.dayIndex) {
+        return { ...task, done: true };
+      }
+      return task;
+    });
+
+    saveInventory(inventory);
+    saveTasks(tasks);
+    hud.setCatFood(inventory.catFood);
+    journal?.render();
+  };
+
+  const debugNextDay = (): void => {
+    gameTime = {
+      dayIndex: gameTime.dayIndex + 1,
+      minutesOfDay: 8 * 60,
+      period: 'morning'
+    };
+    hud.setTime(gameTime);
+    saveTime(gameTime);
+    refreshDailyTasks(gameTime.dayIndex);
+    writeLog('INFO', 'Debug: next day');
+  };
+
   function ensureGameStarted(): void {
     if (!game) {
       game = createGame(
@@ -255,10 +298,17 @@ async function bootstrap(): Promise<void> {
         inputState,
         markDemoTaskCompleted,
         completeShopFlow,
+        feedCatCompleted,
+        debugNextDay,
+        () => inventory.catFood,
         () => gameTime,
         (nextTime) => {
+          const dayChanged = nextTime.dayIndex !== gameTime.dayIndex;
           gameTime = nextTime;
           hud.setTime(nextTime);
+          if (dayChanged) {
+            refreshDailyTasks(nextTime.dayIndex);
+          }
         },
         saveTime
       );
@@ -283,6 +333,7 @@ async function bootstrap(): Promise<void> {
     const loaded = loadTasks();
     tasks = loaded && loaded.length > 0 ? loaded : getInitialTasks(languageCode);
     tasks = ensureShopTasks(languageCode, tasks);
+    tasks = ensureDailyCatTasks(languageCode, gameTime.dayIndex, tasks);
     saveTasks(tasks);
   }
 
@@ -314,6 +365,10 @@ async function bootstrap(): Promise<void> {
   changeLanguageButton.addEventListener('click', () => {
     writeLog('INFO', 'Learning language change requested');
     languagePicker.open();
+  });
+
+  nextDayButton.addEventListener('click', () => {
+    debugNextDay();
   });
 
   const savedLanguage = getLearningLanguage();

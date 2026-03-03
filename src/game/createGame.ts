@@ -9,6 +9,9 @@ export const createGame = (
   inputState: InputState,
   onDemoPhraseMatched: () => void,
   onShopCompleted: () => void,
+  onCatFed: () => void,
+  onDebugNextDay: () => void,
+  getCatFood: () => number,
   getTime: () => GameTime,
   setTime: (time: GameTime) => void,
   persistTime: (time: GameTime) => void
@@ -19,7 +22,19 @@ export const createGame = (
     width: container.clientWidth,
     height: container.clientHeight,
     backgroundColor: '#1e2436',
-    scene: [new WorldScene(inputState, onDemoPhraseMatched, onShopCompleted, getTime, setTime, persistTime)],
+    scene: [
+      new WorldScene(
+        inputState,
+        onDemoPhraseMatched,
+        onShopCompleted,
+        onCatFed,
+        onDebugNextDay,
+        getCatFood,
+        getTime,
+        setTime,
+        persistTime
+      )
+    ],
     physics: {
       default: 'arcade',
       arcade: {

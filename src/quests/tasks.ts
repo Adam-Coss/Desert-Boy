@@ -1,3 +1,4 @@
+import { getFeedCatPhrase } from '../learn/catPhrases';
 import { getDemoPhrase } from '../learn/demoPhrases';
 import { getShopFlow } from '../learn/shopPhrases';
 
@@ -8,6 +9,8 @@ export type Task = {
   expected?: string;
   done: boolean;
   createdAt: number;
+  repeat?: 'daily' | null;
+  dayTag?: number;
 };
 
 export function getInitialTasks(langBcp47: string): Task[] {
@@ -19,7 +22,8 @@ export function getInitialTasks(langBcp47: string): Task[] {
       phraseKey: demo.key,
       expected: demo.expected,
       done: false,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      repeat: null
     }
   ];
 }
@@ -47,7 +51,8 @@ export function ensureShopTasks(langBcp47: string, currentTasks: Task[]): Task[]
       title: 'Купить корм для кошки',
       expected: buyStep?.expected,
       done: false,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      repeat: null
     });
   }
 
@@ -57,9 +62,44 @@ export function ensureShopTasks(langBcp47: string, currentTasks: Task[]): Task[]
       title: 'Сказать «нет, спасибо» в магазине',
       expected: noThanksStep?.expected,
       done: false,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      repeat: null
     });
   }
 
+  return nextTasks;
+}
+
+export function ensureDailyCatTasks(langBcp47: string, dayIndex: number, tasks: Task[]): Task[] {
+  const phrase = getFeedCatPhrase(langBcp47);
+  const nextTasks = [...tasks];
+  const idx = nextTasks.findIndex((task) => task.id === 'cat.feed');
+
+  if (idx === -1) {
+    nextTasks.push({
+      id: 'cat.feed',
+      title: 'Покормить кошку',
+      phraseKey: phrase.id,
+      expected: phrase.expected,
+      done: false,
+      createdAt: Date.now(),
+      repeat: 'daily',
+      dayTag: dayIndex
+    });
+    return nextTasks;
+  }
+
+  const current = nextTasks[idx];
+  const next: Task = {
+    ...current,
+    title: 'Покормить кошку',
+    phraseKey: phrase.id,
+    expected: phrase.expected,
+    repeat: 'daily',
+    dayTag: dayIndex,
+    done: current.dayTag === dayIndex ? current.done : false
+  };
+
+  nextTasks[idx] = next;
   return nextTasks;
 }

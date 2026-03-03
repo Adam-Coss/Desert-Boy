@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { writeLog } from '../../logging';
 import { isMatch } from '../../learn/compare';
+import { getFeedCatPhrase } from '../../learn/catPhrases';
 import { getDemoPhrase } from '../../learn/demoPhrases';
 import { getShopFlow } from '../../learn/shopPhrases';
 import { getSettings } from '../../state/settings';
@@ -19,7 +20,14 @@ const INTERACT_DISTANCE = 120;
 const MAX_ATTEMPTS = 3;
 const TIME_SAVE_THROTTLE_MS = 2000;
 
-type Interactable = 'none' | 'terminal' | 'shop';
+type Interactable = 'none' | 'terminal' | 'shop' | 'cat';
+
+function getOverlayAlpha(period: GameTime['period']): number {
+  if (period === 'morning') return 0.05;
+  if (period === 'day') return 0;
+  if (period === 'evening') return 0.15;
+  return 0.3;
+}
 
 function getOverlayAlpha(period: GameTime['period']): number {
   if (period === 'morning') return 0.05;
@@ -33,6 +41,7 @@ export class WorldScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Rectangle;
   private terminal!: Phaser.GameObjects.Rectangle;
   private shop!: Phaser.GameObjects.Rectangle;
+  private cat!: Phaser.GameObjects.Rectangle;
   private interactHint!: Phaser.GameObjects.Text;
   private npcPrompt!: Phaser.GameObjects.Text;
   private nightOverlay!: Phaser.GameObjects.Rectangle;
@@ -47,6 +56,9 @@ export class WorldScene extends Phaser.Scene {
     inputState: InputState,
     private readonly onDemoPhraseMatched: () => void,
     private readonly onShopCompleted: () => void,
+    private readonly onCatFed: () => void,
+    private readonly onDebugNextDay: () => void,
+    private readonly getCatFood: () => number,
     private readonly getTime: () => GameTime,
     private readonly setTime: (time: GameTime) => void,
     private readonly persistTime: (time: GameTime) => void
@@ -61,6 +73,59 @@ export class WorldScene extends Phaser.Scene {
     this.player = this.add.rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 36, 36, 0xf5c044).setOrigin(0.5);
     this.terminal = this.add.rectangle(this.player.x + 180, this.player.y, 48, 56, 0x67b7ff).setOrigin(0.5);
     this.shop = this.add.rectangle(this.player.x, this.player.y + 220, 64, 48, 0x8fdd7b).setOrigin(0.5);
+    this.cat = this.add.rectangle(this.player.x - 170, this.player.y + 60, 34, 24, 0xff9ac8).setOrigin(0.5);
+
+    const playerLabel = attachLabel(this, this.player, 'Player');
+    const shopLabel = attachLabel(this, this.shop, 'Shop');
+    const terminalLabel = attachLabel(this, this.terminal, 'Terminal');
+    const catLabel = attachLabel(this, this.cat, 'Cat');
+
+    this.labels.push(
+      {
+        update: playerLabel.update,
+        setVisible: (v: boolean) => playerLabel.textObj.setVisible(v),
+        destroy: () => playerLabel.textObj.destroy()
+      },
+      {
+        update: shopLabel.update,
+        setVisible: (v: boolean) => shopLabel.textObj.setVisible(v),
+        destroy: () => shopLabel.textObj.destroy()
+      },
+      {
+        update: terminalLabel.update,
+        setVisible: (v: boolean) => terminalLabel.textObj.setVisible(v),
+        destroy: () => terminalLabel.textObj.destroy()
+      },
+      {
+        update: catLabel.update,
+        setVisible: (v: boolean) => catLabel.textObj.setVisible(v),
+        destroy: () => catLabel.textObj.destroy()
+      }
+    );
+
+    this.toggleLabels(true);
+    writeLog('INFO', 'Debug labels enabled');
+
+    this.input.keyboard?.addKey('L').on('down', () => {
+      this.toggleLabels(!this.labelsVisible);
+      writeLog('INFO', `Debug labels: ${this.labelsVisible ? 'on' : 'off'}`);
+    });
+
+    this.input.keyboard?.addKey('N').on('down', () => {
+      this.onDebugNextDay();
+    });
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      for (const label of this.labels) {
+        label.destroy();
+      }
+      this.labels.length = 0;
+    });
+
+    this.nightOverlay = this.add
+      .rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, WORLD_WIDTH, WORLD_HEIGHT, 0x000000)
+      .setOrigin(0.5)
+      .setAlpha(getOverlayAlpha(this.getTime().period));
 
     const playerLabel = attachLabel(this, this.player, 'Player');
     const shopLabel = attachLabel(this, this.shop, 'Shop');
@@ -182,16 +247,27 @@ export class WorldScene extends Phaser.Scene {
   private updateInteractionAvailability(): void {
     const terminalDistance = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.terminal.x, this.terminal.y);
     const shopDistance = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.shop.x, this.shop.y);
+    const catDistance = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.cat.x, this.cat.y);
 
     const nearTerminal = terminalDistance < INTERACT_DISTANCE;
     const nearShop = shopDistance < INTERACT_DISTANCE;
+    const nearCat = catDistance < INTERACT_DISTANCE;
 
-    if (nearTerminal && nearShop) {
+    if (nearTerminal && nearShop && nearCat) {
+      const nearest = Math.min(terminalDistance, shopDistance, catDistance);
+      this.activeInteractable = nearest === terminalDistance ? 'terminal' : nearest === shopDistance ? 'shop' : 'cat';
+    } else if (nearTerminal && nearShop) {
       this.activeInteractable = terminalDistance <= shopDistance ? 'terminal' : 'shop';
+    } else if (nearTerminal && nearCat) {
+      this.activeInteractable = terminalDistance <= catDistance ? 'terminal' : 'cat';
+    } else if (nearShop && nearCat) {
+      this.activeInteractable = shopDistance <= catDistance ? 'shop' : 'cat';
     } else if (nearTerminal) {
       this.activeInteractable = 'terminal';
     } else if (nearShop) {
       this.activeInteractable = 'shop';
+    } else if (nearCat) {
+      this.activeInteractable = 'cat';
     } else {
       this.activeInteractable = 'none';
     }
@@ -215,7 +291,12 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
-    await this.startShopDialogue();
+    if (this.activeInteractable === 'shop') {
+      await this.startShopDialogue();
+      return;
+    }
+
+    await this.startCatDialogue();
   }
 
   private async startTerminalDialogue(): Promise<void> {
@@ -302,6 +383,52 @@ export class WorldScene extends Phaser.Scene {
 
       this.onShopCompleted();
       hud.setResult('✅ Покупка завершена');
+    } finally {
+      this.unlockInteraction();
+    }
+  }
+
+  private async startCatDialogue(): Promise<void> {
+    const language = getSettings().learningLanguage?.bcp47 ?? 'en-US';
+    const feedPhrase = getFeedCatPhrase(language);
+    const hud = getHud();
+
+    this.lockInteraction();
+    this.npcPrompt.setPosition(this.cat.x, this.cat.y - 50).setText('🐱 Мяу').setVisible(true);
+
+    try {
+      if (this.getCatFood() <= 0) {
+        hud.setResult('Нет корма. Сходи в магазин.');
+        writeLog('WARN', 'Feed cat blocked: no food');
+        return;
+      }
+
+      hud.setExpected(feedPhrase.expected);
+      hud.setRecognized('…');
+
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+        hud.setResult('Слушаю...');
+
+        try {
+          const { finalText } = await listenOnce(language);
+          hud.setRecognized(finalText);
+
+          if (isMatch(feedPhrase.expected, finalText)) {
+            this.onCatFed();
+            hud.setResult('✅ Кошка довольна');
+            writeLog('INFO', 'Cat fed, catFood -1');
+            return;
+          }
+
+          hud.setResult('Повторите, пожалуйста');
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          hud.setResult('Не получилось распознать. Повторите, пожалуйста.');
+          writeLog('ERROR', `Cat recognition failed: ${errorMessage}`);
+        }
+      }
+
+      hud.setResult('Пока пропустим');
     } finally {
       this.unlockInteraction();
     }
